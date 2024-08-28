@@ -17,41 +17,46 @@ type Builder interface {
 func Build(ctx context.Context, b Builder) (string, []any) {
 	switch x := b.(type) {
 	case *sb.UpdateBuilder:
-		appendNamespaceFilter(ctx, &x.Cond)
+		x.Cond = *appendNamespaceFilter(ctx, &x.Cond)
 	case *sb.SelectBuilder:
-		appendNamespaceFilter(ctx, &x.Cond)
+		x.Cond = *appendNamespaceFilter(ctx, &x.Cond)
 	case *sb.DeleteBuilder:
-		appendNamespaceFilter(ctx, &x.Cond)
+		x.Cond = *appendNamespaceFilter(ctx, &x.Cond)
 	}
 	return b.Build()
 }
 
 func appendNamespaceFilter(ctx context.Context, cond *sb.Cond) *sb.Cond {
+	if s := namespaceValueForInject(ctx); s != "" {
+		// append namespace where condition into Cond
+		cond.E(namespaceColumnName, s)
+	}
+	return cond
+}
+
+func namespaceValueForInject(ctx context.Context) string {
 	v := ctx.Value(namespaceCtxKey{})
 	if v == nil {
 		// no namespace in context
-		return cond
+		return ""
 	}
 
 	s, ok := v.(string)
 	if !ok {
 		// incorrect namespace value in context, ignore it
-		return cond
+		return ""
 	}
 
 	if s == "" || s == "-" || s == "<nil>" {
 		// empty namespace value in context, ignore it
-		return cond
+		return ""
 	}
 
 	if shouldIgnoreNamespace(ctx) {
 		// user-defined force ignore namespace in context
-		return cond
+		return ""
 	}
-
-	// append namespace where condition into Cond
-	cond.E(namespaceColumnName, s)
-	return cond
+	return s
 }
 
 // WithNamespace add namespace info into context

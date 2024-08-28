@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"reflect"
+	"slices"
 
 	sb "github.com/huandu/go-sqlbuilder"
 	"github.com/jmoiron/sqlx"
@@ -26,7 +27,7 @@ func InsertIgnoreTx(ctx context.Context, tx *sqlx.Tx, table string, data ...any)
 	if table == "" {
 		table = TableName(data)
 	}
-	ib, err := NewInsertBuilderFromStruct(table, data[0])
+	ib, err := NewInsertBuilderFromStruct(ctx, table, data[0])
 	if err != nil {
 		return fmt.Errorf("create insert builder from structure error: %w", err)
 	}
@@ -60,7 +61,7 @@ func InsertManyTx(ctx context.Context, tx *sqlx.Tx, table string, data ...any) e
 	if table == "" {
 		table = TableName(data)
 	}
-	ib, err := NewInsertBuilderFromStruct(table, data[0])
+	ib, err := NewInsertBuilderFromStruct(ctx, table, data[0])
 	if err != nil {
 		return fmt.Errorf("create insert builder from structure error: %w", err)
 	}
@@ -95,7 +96,7 @@ func InsertOneTx(ctx context.Context, tx *sqlx.Tx, table string, data any) (int6
 	if table == "" {
 		table = TableName(data)
 	}
-	ib, err := NewInsertBuilderFromStruct(table, data)
+	ib, err := NewInsertBuilderFromStruct(ctx, table, data)
 	if err != nil {
 		return 0, fmt.Errorf("create insert builder from structure error: %w", err)
 	}
@@ -119,7 +120,7 @@ func InsertOneTx(ctx context.Context, tx *sqlx.Tx, table string, data any) (int6
 // NewInsertBuilderFromStruct 使用一组数据 data 数据构建 INSERT SQL Builder
 // data 的数据类型必须一致，并且属于 struct 类型。
 // data 数据类型中，定义了 fieldtag:"insert" 信息的字段才会被插入。
-func NewInsertBuilderFromStruct(table string, data ...any) (*sb.InsertBuilder, error) {
+func NewInsertBuilderFromStruct(ctx context.Context, table string, data ...any) (*sb.InsertBuilder, error) {
 	if len(data) <= 0 {
 		return nil, fmt.Errorf("no data to insert")
 	}
@@ -157,6 +158,12 @@ func NewInsertBuilderFromStruct(table string, data ...any) (*sb.InsertBuilder, e
 		return nil, fmt.Errorf(`no insert field defined in '%s' type, defined db:",insert" for insert field`, t.Name())
 	}
 
+	injectNamespace := namespaceValueForInject(ctx)
+	shouldInject := injectNamespace != "" && !slices.Contains(cols, namespaceColumnName)
+	if shouldInject {
+		cols = append(cols, namespaceColumnName)
+	}
+
 	ib.Cols(cols...)
 
 	for _, item := range data {
@@ -172,6 +179,9 @@ func NewInsertBuilderFromStruct(table string, data ...any) (*sb.InsertBuilder, e
 			if fieldTags[i] != "" {
 				vals = append(vals, convertValueByDBType(dereferencedValue(field).Interface(), fieldTags[i]))
 			}
+		}
+		if shouldInject {
+			vals = append(vals, injectNamespace)
 		}
 		ib.Values(vals...)
 	}
