@@ -20,7 +20,7 @@ func PatchByIDTx(ctx context.Context, tx *sqlx.Tx, table string, id int64, data 
 	if !ok {
 		return nil
 	}
-	ub = ub.Where(WhereFrom(id, nil)...)
+	ub = ub.Where(WhereFrom(&ub.Cond, id, nil)...)
 	var (
 		sql  string
 		args []any
@@ -49,7 +49,7 @@ func PatchWhereTx(ctx context.Context, tx *sqlx.Tx, table string, data any, filt
 	if !ok {
 		return 0, nil
 	}
-	ub = ub.Where(WhereFrom(filter, nil)...)
+	ub = ub.Where(WhereFrom(&ub.Cond, filter, nil)...)
 	var (
 		err  error
 		sql  string

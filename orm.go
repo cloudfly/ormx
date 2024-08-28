@@ -3,6 +3,8 @@ package ormx
 import (
 	"context"
 	"fmt"
+
+	"github.com/cloudfly/ormx/cache"
 )
 
 var (
@@ -13,9 +15,10 @@ var (
 )
 
 // Init the ormx, setting the sqlx.DB getter and common table name prefix
-func Init(provider DBProvider, tablePrefix string) {
+func Init(provider DBProvider, tablePrefix string) error {
 	p = provider
 	tableNamePrefix = tablePrefix
+	return cache.Init()
 }
 
 // SetStructTagName set the tag name in Go Struct Tag, in which specify the ormx options, default is 'db'

@@ -117,9 +117,11 @@ func InsertOneTx(ctx context.Context, tx *sqlx.Tx, table string, data any) (int6
 	return id, nil
 }
 
-// NewInsertBuilderFromStruct 使用一组数据 data 数据构建 INSERT SQL Builder
-// data 的数据类型必须一致，并且属于 struct 类型。
-// data 数据类型中，定义了 fieldtag:"insert" 信息的字段才会被插入。
+// NewInsertBuilderFromStruct create a new insert builder from data, the struct field with 'insert' option in field tag will be inserted
+//
+// such as: db:"columnName,insert" or db:",insert"
+//
+// the struct field with no insert tag option, will be ignored
 func NewInsertBuilderFromStruct(ctx context.Context, table string, data ...any) (*sb.InsertBuilder, error) {
 	if len(data) <= 0 {
 		return nil, fmt.Errorf("no data to insert")

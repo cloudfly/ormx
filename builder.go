@@ -17,11 +17,11 @@ type Builder interface {
 func Build(ctx context.Context, b Builder) (string, []any) {
 	switch x := b.(type) {
 	case *sb.UpdateBuilder:
-		x.Cond = *appendNamespaceFilter(ctx, &x.Cond)
+		appendNamespaceFilter(ctx, &x.Cond)
 	case *sb.SelectBuilder:
-		x.Cond = *appendNamespaceFilter(ctx, &x.Cond)
+		appendNamespaceFilter(ctx, &x.Cond)
 	case *sb.DeleteBuilder:
-		x.Cond = *appendNamespaceFilter(ctx, &x.Cond)
+		appendNamespaceFilter(ctx, &x.Cond)
 	}
 	return b.Build()
 }
@@ -90,7 +90,7 @@ type namespaceCtxKey struct{}
 type ignoreNamespaceCtxKey struct{}
 
 // WhereFromStruct generate where exprs from data(type of struct), the returned value can be used by builder.Where method
-func WhereFromStruct(data any, dst []string) []string {
+func WhereFromStruct(c *sb.Cond, data any, dst []string) []string {
 	if data == nil {
 		return []string{}
 	}
@@ -110,26 +110,25 @@ func WhereFromStruct(data any, dst []string) []string {
 			continue
 		}
 		fieldValue := dereferencedValue(field).Interface()
-		dst = appendWhereExpr(dst, name, fieldValue, fieldType.Tag.Get("op"))
+		dst = appendWhereExpr(c, dst, name, fieldValue, fieldType.Tag.Get("op"))
 	}
 	return dst
 }
 
 // WhereFromStruct generate where exprs from []KV, the returned value can be used by builder.Where method
-func WhereFromKVs(filter KVs, dst []string) []string {
+func WhereFromKVs(c *sb.Cond, filter KVs, dst []string) []string {
 	if filter == nil {
 		return []string{}
 	}
 	for _, kv := range filter {
 		colName := kv.Key
 		fieldValue := kv.Value
-		dst = appendWhereExpr(dst, colName, fieldValue, kv.Extra)
+		dst = appendWhereExpr(c, dst, colName, fieldValue, kv.Extra)
 	}
 	return dst
 }
 
-func WhereFromIDs(idList []int64, dst []string) []string {
-	c := sb.NewCond()
+func WhereFromIDs(c *sb.Cond, idList []int64, dst []string) []string {
 	t := reflect.TypeOf(idList)
 	if t.Kind() == reflect.Slice {
 		dst = append(dst, c.In(primaryKey, Any2Slice(idList)...))
@@ -137,8 +136,7 @@ func WhereFromIDs(idList []int64, dst []string) []string {
 	return dst
 }
 
-func WhereFromID(id int64, dst []string) []string {
-	c := sb.NewCond()
+func WhereFromID(c *sb.Cond, id int64, dst []string) []string {
 	t := reflect.TypeOf(id)
 	if t.Kind() == reflect.Slice {
 		dst = append(dst, c.E(primaryKey, id))
@@ -146,14 +144,13 @@ func WhereFromID(id int64, dst []string) []string {
 	return dst
 }
 
-func WhereFrom(filter any, dst []string) []string {
-	c := sb.NewCond()
+func WhereFrom(c *sb.Cond, filter any, dst []string) []string {
 	if kvs, ok := filter.(KVs); ok {
-		return WhereFromKVs(kvs, dst)
+		return WhereFromKVs(c, kvs, dst)
 	}
 	t := dereferencedType(reflect.TypeOf(filter))
 	if kind := t.Kind(); kind == reflect.Struct {
-		return WhereFromStruct(filter, dst)
+		return WhereFromStruct(c, filter, dst)
 	} else if kind == reflect.Slice {
 		dst = append(dst, c.In(primaryKey, Any2Slice(filter)...))
 	} else {
@@ -162,10 +159,7 @@ func WhereFrom(filter any, dst []string) []string {
 	return dst
 }
 
-func appendWhereExpr(dst []string, column string, value any, op string) []string {
-	c := &sb.Cond{
-		Args: &sb.Args{},
-	}
+func appendWhereExpr(c *sb.Cond, dst []string, column string, value any, op string) []string {
 	switch op {
 	case "":
 		if dereferencedType(reflect.TypeOf(value)).Kind() == reflect.Slice {
@@ -290,4 +284,10 @@ func colNameFromTag(field reflect.StructField) (string, string) {
 		return field.Name, after
 	}
 	return name, after
+}
+
+func newCond() *sb.Cond {
+	return &sb.Cond{
+		Args: &sb.Args{},
+	}
 }

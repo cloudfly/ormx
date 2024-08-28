@@ -36,7 +36,7 @@ func GetByID(ctx context.Context, dst interface{}, table string, id int64) error
 	if err != nil {
 		return fmt.Errorf("create select builder error:%w", err)
 	}
-	b = b.Where(WhereFrom(id, nil)...)
+	b = b.Where(WhereFrom(&b.Cond, id, nil)...)
 
 	var (
 		statement string
@@ -62,7 +62,8 @@ func GetWhere(ctx context.Context, dst interface{}, table string, filter KVs) er
 	if table == "" {
 		table = TableName(dst)
 	}
-	builder := sb.NewStruct(dst).SelectFrom(table).Where(WhereFrom(filter, nil)...)
+	builder := sb.NewStruct(dst).SelectFrom(table)
+	builder = builder.Where(WhereFrom(&builder.Cond, filter, nil)...)
 	sql, args := Build(ctx, builder)
 	return Get(ctx, dst, sql, args...)
 }
@@ -76,17 +77,17 @@ func SelectWhere(ctx context.Context, dst interface{}, table string, filter KVs)
 	if err != nil {
 		return fmt.Errorf("new select builder error: %w", err)
 	}
-	builder = builder.Where(WhereFrom(filter, nil)...)
+	builder = builder.Where(WhereFrom(&builder.Cond, filter, nil)...)
 	sql, args := Build(ctx, builder)
 
 	return Select(ctx, dst, sql, args...)
 }
 
 // Count select the count of rows in table which match the filter condition
-func Count(ctx context.Context, table string, filter KVs) (int64, error) {
+func Count(ctx context.Context, table string, filter any) (int64, error) {
 	total := sql.NullInt64{}
 	b := sb.NewSelectBuilder().Select("COUNT(1) as total").From(table)
-	b = b.Where(WhereFromKVs(filter, nil)...)
+	b = b.Where(WhereFrom(&b.Cond, filter, nil)...)
 	sql, args := Build(ctx, b)
 	err := Get(ctx, &total, sql, args...)
 	if IsNotFound(err) {
@@ -96,10 +97,10 @@ func Count(ctx context.Context, table string, filter KVs) (int64, error) {
 }
 
 // Exist return true if the at least one row found in table by using where condition
-func Exist(ctx context.Context, table string, filter KVs) (bool, error) {
+func Exist(ctx context.Context, table string, filter any) (bool, error) {
 	n := sql.NullInt64{}
 	b := sb.NewSelectBuilder().Select("1").From(table).Limit(1)
-	b = b.Where(WhereFrom(filter, nil)...)
+	b = b.Where(WhereFrom(&b.Cond, filter, nil)...)
 	statement, args := Build(ctx, b)
 	err := Get(ctx, &n, statement, args...)
 	if err != nil {
