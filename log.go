@@ -1,42 +1,13 @@
 package ormx
 
-import "context"
+import (
+	"os"
 
-type Level int8
-
-const (
-	// DebugLevel defines debug log level.
-	DebugLevel Level = iota
-	// InfoLevel defines info log level.
-	InfoLevel
-	// WarnLevel defines warn log level.
-	WarnLevel
-	// ErrorLevel defines error log level.
-	ErrorLevel
-	// FatalLevel defines fatal log level.
-	FatalLevel
-	// PanicLevel defines panic log level.
-	PanicLevel
-	// NoLevel defines an absent log level.
-	NoLevel
-	// Disabled disables the logger.
-	Disabled
-
-	// TraceLevel defines trace log level.
-	TraceLevel Level = -1
-	// Values less than TraceLevel are handled as numbers.
+	"github.com/rs/zerolog"
 )
 
-type Logger interface {
-	Printf(context.Context, Level, string, ...any)
-}
+var log zerolog.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 
-type nopLogger struct{}
-
-func (l nopLogger) Printf(ctx context.Context, level Level, format string, args ...any) {}
-
-var log Logger = nopLogger{}
-
-func SetLogger(l Logger) {
+func SetLogger(l zerolog.Logger) {
 	log = l
 }

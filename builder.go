@@ -29,12 +29,16 @@ func Build(ctx context.Context, b Builder) (string, []any) {
 func appendNamespaceFilter(ctx context.Context, cond *sb.Cond) *sb.Cond {
 	if s := namespaceValueForInject(ctx); s != "" {
 		// append namespace where condition into Cond
-		cond.E(namespaceColumnName, s)
+		cond.E(*namespaceColumnName, s)
 	}
 	return cond
 }
 
 func namespaceValueForInject(ctx context.Context) string {
+	if *namespaceColumnName == "" || *namespaceColumnName == "-" {
+		// namespace column disabled
+		return ""
+	}
 	v := ctx.Value(namespaceCtxKey{})
 	if v == nil {
 		// no namespace in context
@@ -131,7 +135,7 @@ func WhereFromKVs(c *sb.Cond, filter KVs, dst []string) []string {
 func WhereFromIDs(c *sb.Cond, idList []int64, dst []string) []string {
 	t := reflect.TypeOf(idList)
 	if t.Kind() == reflect.Slice {
-		dst = append(dst, c.In(primaryKey, Any2Slice(idList)...))
+		dst = append(dst, c.In(*primaryKey, Any2Slice(idList)...))
 	}
 	return dst
 }
@@ -139,7 +143,7 @@ func WhereFromIDs(c *sb.Cond, idList []int64, dst []string) []string {
 func WhereFromID(c *sb.Cond, id int64, dst []string) []string {
 	t := reflect.TypeOf(id)
 	if t.Kind() == reflect.Slice {
-		dst = append(dst, c.E(primaryKey, id))
+		dst = append(dst, c.E(*primaryKey, id))
 	}
 	return dst
 }
@@ -152,9 +156,9 @@ func WhereFrom(c *sb.Cond, filter any, dst []string) []string {
 	if kind := t.Kind(); kind == reflect.Struct {
 		return WhereFromStruct(c, filter, dst)
 	} else if kind == reflect.Slice {
-		dst = append(dst, c.In(primaryKey, Any2Slice(filter)...))
+		dst = append(dst, c.In(*primaryKey, Any2Slice(filter)...))
 	} else {
-		dst = append(dst, c.E(primaryKey, filter))
+		dst = append(dst, c.E(*primaryKey, filter))
 	}
 	return dst
 }
@@ -231,11 +235,11 @@ S:
 		name = fmt.Sprintf("%s", d)
 	}
 
-	if strings.HasPrefix(name, tableNamePrefix) {
+	if strings.HasPrefix(name, *tableNamePrefix) {
 		return name
 	}
 
-	return tableNamePrefix + name
+	return *tableNamePrefix + name
 }
 
 // ColNamesWithTagOpt will column names from structure data, the type of d must be a struct, otherwise will return []string{}.

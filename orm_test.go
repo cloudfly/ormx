@@ -2,7 +2,6 @@ package ormx
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -10,16 +9,9 @@ import (
 )
 
 func init() {
-	if err := Init(test.Provider, ""); err != nil {
+	if err := Init(context.TODO(), test.Provider); err != nil {
 		panic(err)
 	}
-	SetLogger(testLogger{})
-}
-
-type testLogger struct{}
-
-func (l testLogger) Printf(ctx context.Context, level Level, format string, args ...any) {
-	fmt.Printf(format+"\n", args...)
 }
 
 type TestRow struct {

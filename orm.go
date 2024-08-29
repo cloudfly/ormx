@@ -4,20 +4,25 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cloudfly/flagx"
 	"github.com/cloudfly/ormx/cache"
 )
 
 var (
-	tableNamePrefix     = ""
+	tableNamePrefix     = flagx.NewString("database.table.prefix", "", "the table name's common prefix")
 	structTagName       = "db"
-	namespaceColumnName = "namespace"
-	primaryKey          = "id"
+	namespaceColumnName = flagx.NewString("database.table.namespace.column", "namespace", "the column name used to represent row's namespace")
+	primaryKey          = flagx.NewString("database.table.primarykey", "id", "the primary id column name")
 )
 
 // Init the ormx, setting the sqlx.DB getter and common table name prefix
-func Init(provider DBProvider, tablePrefix string) error {
-	p = provider
-	tableNamePrefix = tablePrefix
+func Init(ctx context.Context, provider DBProvider) error {
+	if err := Connect(ctx); err != nil {
+		return err
+	}
+	if provider != nil {
+		p = provider
+	}
 	return cache.Init()
 }
 
@@ -29,7 +34,7 @@ func SetStructTagName(name string) {
 // SetPrimaryKey set the primary column name, default is 'id'
 func SetPrimaryKey(name string) {
 	if name != "" {
-		primaryKey = name
+		*primaryKey = name
 	}
 }
 
@@ -37,7 +42,7 @@ func SetPrimaryKey(name string) {
 //
 // ormx will auto inject namespace where condition into sql.// Set to empty string disable this feature
 func SetNamespaceColumnName(name string) {
-	namespaceColumnName = name
+	*namespaceColumnName = name
 }
 
 type masterCtxKey struct{}

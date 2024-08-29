@@ -5,10 +5,11 @@ import (
 	"database/sql/driver"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/rs/zerolog"
 )
 
 var (
-	p DBProvider
+	p DBProvider = DefaultProvider
 )
 
 // DBProvider
@@ -34,14 +35,14 @@ func RunTxContext(ctx context.Context, f func(ctx context.Context, tx *sqlx.Tx) 
 
 // Exec execute a sql on master DB
 func Exec(ctx context.Context, sql string, args ...interface{}) (driver.Result, error) {
-	log.Printf(ctx, InfoLevel, "Executing sql: %s, args: %v", sql, args)
+	zerolog.Ctx(ctx).Info().Str("query", sql).Any("args", args).Msg("Executing sql query")
 	emitMetric(ctx, sql)
 	return Master().ExecContext(ctx, sql, args...)
 }
 
 // Exec execute a sql in transaction
 func ExecTx(ctx context.Context, tx *sqlx.Tx, sql string, args ...interface{}) (driver.Result, error) {
-	log.Printf(ctx, InfoLevel, "Executing sql: %s, args: %v", sql, args)
+	zerolog.Ctx(ctx).Info().Str("query", sql).Any("args", args).Msg("Executing sql query")
 	emitMetric(ctx, sql)
 	return tx.ExecContext(ctx, sql, args...)
 }
@@ -55,10 +56,10 @@ func Select(ctx context.Context, dest interface{}, sql string, args ...interface
 	)
 	if isFromMaster(ctx) {
 		db = Master()
-		log.Printf(ctx, InfoLevel, "Selecting on master: %s, args: %v", sql, args)
+		zerolog.Ctx(ctx).Info().Str("query", sql).Any("args", args).Msg("Selecting on master")
 	} else {
 		db = Slave()
-		log.Printf(ctx, DebugLevel, "Selecting on slave: %s, args: %v", sql, args)
+		zerolog.Ctx(ctx).Debug().Str("query", sql).Any("args", args).Msg("Selecting on slave")
 	}
 	emitMetric(ctx, sql)
 	return db.SelectContext(ctx, dest, sql, args...)
@@ -68,7 +69,7 @@ func Select(ctx context.Context, dest interface{}, sql string, args ...interface
 //
 // it will auto query from master if the context having FromMaster
 func SelectTx(ctx context.Context, tx *sqlx.Tx, dest interface{}, sql string, args ...interface{}) error {
-	log.Printf(ctx, InfoLevel, "Selecting sql: %s, args: %v", sql, args)
+	zerolog.Ctx(ctx).Info().Str("query", sql).Any("args", args).Msg("Selecting in transaction")
 	emitMetric(ctx, sql)
 	return tx.SelectContext(ctx, dest, sql, args...)
 }
@@ -82,10 +83,10 @@ func Get(ctx context.Context, dest interface{}, sql string, args ...interface{})
 	)
 	if isFromMaster(ctx) {
 		db = Master()
-		log.Printf(ctx, InfoLevel, "Getting by sql: %s, args: %v", sql, args)
+		zerolog.Ctx(ctx).Info().Str("query", sql).Any("args", args).Msg("Getting on master")
 	} else {
 		db = Slave()
-		log.Printf(ctx, DebugLevel, "Getting by sql: %s, args: %v", sql, args)
+		zerolog.Ctx(ctx).Debug().Str("query", sql).Any("args", args).Msg("Getting on slave")
 	}
 	emitMetric(ctx, sql)
 	return db.GetContext(ctx, dest, sql, args...)
@@ -93,7 +94,7 @@ func Get(ctx context.Context, dest interface{}, sql string, args ...interface{})
 
 // Get will get one data from tx by using raw sql and args.
 func GetTx(ctx context.Context, tx *sqlx.Tx, dest interface{}, sql string, args ...interface{}) error {
-	log.Printf(ctx, InfoLevel, "Getting by sql: %s, args: %v", sql, args)
+	zerolog.Ctx(ctx).Info().Str("query", sql).Any("args", args).Msg("Getting in transaction")
 	emitMetric(ctx, sql)
 	return tx.GetContext(ctx, dest, sql, args...)
 }

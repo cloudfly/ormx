@@ -161,9 +161,9 @@ func NewInsertBuilderFromStruct(ctx context.Context, table string, data ...any) 
 	}
 
 	injectNamespace := namespaceValueForInject(ctx)
-	shouldInject := injectNamespace != "" && !slices.Contains(cols, namespaceColumnName)
+	shouldInject := injectNamespace != "" && !slices.Contains(cols, *namespaceColumnName)
 	if shouldInject {
-		cols = append(cols, namespaceColumnName)
+		cols = append(cols, *namespaceColumnName)
 	}
 
 	ib.Cols(cols...)

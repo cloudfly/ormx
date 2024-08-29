@@ -10,6 +10,7 @@ import (
 
 	"github.com/cloudfly/ormx/cache"
 	sb "github.com/huandu/go-sqlbuilder"
+	"github.com/rs/zerolog"
 )
 
 func GetByID(ctx context.Context, dst interface{}, table string, id int64) error {
@@ -49,7 +50,7 @@ func GetByID(ctx context.Context, dst interface{}, table string, id int64) error
 	}
 	content, err := json.Marshal(dst)
 	if err != nil {
-		log.Printf(ctx, WarnLevel, "Failed to marshal data for caching: %w, data: %+v", err.Error(), dst)
+		zerolog.Ctx(ctx).Warn().Err(err).Str("query", statement).Any("args", args).Msg("Failed to marshal data for cacheing")
 		// 忽略序列化错误，顶多就是无法cache，无关紧要
 		return nil
 	}
