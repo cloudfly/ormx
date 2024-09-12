@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/cloudfly/ormx/cache"
@@ -76,7 +77,7 @@ func GetWhere(ctx context.Context, dst interface{}, table string, fields []strin
 }
 
 // GetWhere 使用自定义条件跟新数据
-func SelectWhere(ctx context.Context, dst interface{}, table string, fields []string, filter KVs) error {
+func SelectWhere(ctx context.Context, dst interface{}, table string, fields []string, filter KVs, sort []string, page, pageSize int) error {
 	if table == "" {
 		table = TableName(dst)
 	}
@@ -88,6 +89,25 @@ func SelectWhere(ctx context.Context, dst interface{}, table string, fields []st
 		builder = builder.Select(fields...)
 	}
 	builder = builder.Where(WhereFrom(&builder.Cond, filter, nil)...)
+
+	if len(sort) > 0 {
+		orderByCols := make([]string, 0, 8)
+		for _, col := range sort {
+			if col == "" {
+				continue
+			}
+			if col[0] == '-' {
+				orderByCols = append(orderByCols, strings.TrimLeft(col, "-")+" DESC")
+			} else {
+				orderByCols = append(orderByCols, col+" ASC")
+			}
+		}
+		builder = builder.OrderBy(orderByCols...)
+	}
+	if page > 0 && pageSize > 0 {
+		builder = builder.Limit(pageSize).Offset((page - 1) * pageSize)
+	}
+
 	sql, args := Build(ctx, builder)
 
 	return Select(ctx, dst, sql, args...)
