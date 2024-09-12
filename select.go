@@ -128,7 +128,7 @@ func Count(ctx context.Context, table string, filter any) (int64, error) {
 }
 
 // Count select the count of rows in table which match the filter condition
-func CountBy(ctx context.Context, table string, filter any, group []string) (M, error) {
+func CountBy(ctx context.Context, table string, filter any, group []string) ([]M, error) {
 	cols := []string{"COUNT(1) as total"}
 	if len(group) > 0 {
 		cols = append(cols, group...)
@@ -140,9 +140,9 @@ func CountBy(ctx context.Context, table string, filter any, group []string) (M, 
 		b = b.GroupBy(group...)
 	}
 
-	data := M{}
+	data := []M{}
 	sql, args := Build(ctx, b)
-	err := Get(ctx, &data, sql, args...)
+	err := Select(ctx, &data, sql, args...)
 	if IsNotFound(err) {
 		err = nil
 	}
