@@ -118,12 +118,50 @@ func Count(ctx context.Context, table string, filter any) (int64, error) {
 	total := sql.NullInt64{}
 	b := sb.NewSelectBuilder().Select("COUNT(1) as total").From(table)
 	b = b.Where(WhereFrom(&b.Cond, filter, nil)...)
+
 	sql, args := Build(ctx, b)
 	err := Get(ctx, &total, sql, args...)
 	if IsNotFound(err) {
 		err = nil
 	}
 	return total.Int64, err
+}
+
+// Count select the count of rows in table which match the filter condition
+func CountBy(ctx context.Context, table string, filter any, group []string) (M, error) {
+	cols := []string{"COUNT(1) as total"}
+	if len(group) > 0 {
+		cols = append(cols, group...)
+	}
+	b := sb.NewSelectBuilder().Select(cols...).From(table)
+	b = b.Where(WhereFrom(&b.Cond, filter, nil)...)
+
+	if len(group) > 0 {
+		b = b.GroupBy(group...)
+	}
+
+	data := M{}
+	sql, args := Build(ctx, b)
+	err := Get(ctx, &data, sql, args...)
+	if IsNotFound(err) {
+		err = nil
+	}
+	return data, err
+}
+
+// Distinct fetch distinct values of the column in table
+func Distinct(ctx context.Context, table, column string, filter KVs) ([]any, error) {
+	builder := sb.NewSelectBuilder().From(table)
+	builder = builder.Select(fmt.Sprintf("DISTINCT(%s) as %s", sb.Escape(column), sb.Escape(column)))
+	conds := WhereFromKVs(&builder.Cond, filter, nil)
+	builder = builder.Where(conds...)
+	sql, args := Build(ctx, builder)
+
+	data := []any{}
+	if err := Select(ctx, &data, sql, args...); err != nil {
+		return nil, fmt.Errorf("select error: %w", err)
+	}
+	return data, nil
 }
 
 // Exist return true if the at least one row found in table by using where condition

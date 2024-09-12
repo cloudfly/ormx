@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	sb "github.com/huandu/go-sqlbuilder"
 )
 
 func Any2Time(i any) (time.Time, bool) {
@@ -161,3 +163,5 @@ func ParseOptionStr(str string) map[string]string {
 
 	return options
 }
+
+var Raw = sb.Raw
