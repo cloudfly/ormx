@@ -59,24 +59,33 @@ func GetByID(ctx context.Context, dst interface{}, table string, id int64) error
 }
 
 // GetWhere 使用自定义条件跟新数据
-func GetWhere(ctx context.Context, dst interface{}, table string, filter KVs) error {
-	if table == "" {
-		table = TableName(dst)
-	}
-	builder := sb.NewStruct(dst).SelectFrom(table)
-	builder = builder.Where(WhereFrom(&builder.Cond, filter, nil)...)
-	sql, args := Build(ctx, builder)
-	return Get(ctx, dst, sql, args...)
-}
-
-// GetWhere 使用自定义条件跟新数据
-func SelectWhere(ctx context.Context, dst interface{}, table string, filter KVs) error {
+func GetWhere(ctx context.Context, dst interface{}, table string, fields []string, filter KVs) error {
 	if table == "" {
 		table = TableName(dst)
 	}
 	builder, err := NewSelectBuilderFromStruct(table, dst)
 	if err != nil {
 		return fmt.Errorf("new select builder error: %w", err)
+	}
+	if len(fields) == 0 {
+		builder = builder.Select(fields...)
+	}
+	builder = builder.Where(WhereFrom(&builder.Cond, filter, nil)...)
+	sql, args := Build(ctx, builder)
+	return Get(ctx, dst, sql, args...)
+}
+
+// GetWhere 使用自定义条件跟新数据
+func SelectWhere(ctx context.Context, dst interface{}, table string, fields []string, filter KVs) error {
+	if table == "" {
+		table = TableName(dst)
+	}
+	builder, err := NewSelectBuilderFromStruct(table, dst)
+	if err != nil {
+		return fmt.Errorf("new select builder error: %w", err)
+	}
+	if len(fields) == 0 {
+		builder = builder.Select(fields...)
 	}
 	builder = builder.Where(WhereFrom(&builder.Cond, filter, nil)...)
 	sql, args := Build(ctx, builder)
