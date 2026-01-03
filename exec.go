@@ -2,7 +2,9 @@ package ormx
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
+	"fmt"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
@@ -17,8 +19,13 @@ type DBProvider func(isMaster bool) *sqlx.DB
 
 // RunTxContext execute a transiction
 func RunTxContext(ctx context.Context, f func(ctx context.Context, tx *sqlx.Tx) error) error {
+	return RunTxWithOptionContext(ctx, nil, f)
+}
+
+// RunTxContext execute a transiction with custom options
+func RunTxWithOptionContext(ctx context.Context, opts *sql.TxOptions, f func(ctx context.Context, tx *sqlx.Tx) error) error {
 	db := Master()
-	tx, err := db.BeginTxx(ctx, nil)
+	tx, err := db.BeginTxx(ctx, opts)
 	if err != nil {
 		return err
 	}
@@ -31,6 +38,37 @@ func RunTxContext(ctx context.Context, f func(ctx context.Context, tx *sqlx.Tx) 
 	}
 
 	return tx.Commit()
+}
+
+// RunInLock execute a sql in lock
+func RunInLock(ctx context.Context, table string, f func(ctx context.Context) error) (err error) {
+	db := Master()
+	_, err = db.ExecContext(ctx, fmt.Sprintf("LOCK TABLES %s WRITE", table))
+	if err != nil {
+		return
+	}
+	// 确保锁最终释放（即使后续操作出错）
+	defer func() {
+		if _, e := db.ExecContext(ctx, "UNLOCK TABLES"); e != nil {
+			err = e
+		}
+	}()
+	err = f(ctx)
+	return
+}
+
+func RunInRLock(ctx context.Context, table string, f func(ctx context.Context) error) (err error) {
+	db := Master()
+	_, err = db.ExecContext(ctx, "LOCK TABLES ? READ", table)
+	if err != nil {
+		return
+	}
+	// 确保锁最终释放（即使后续操作出错）
+	defer func() {
+		_, err = db.ExecContext(ctx, "UNLOCK TABLES")
+	}()
+	err = f(ctx)
+	return
 }
 
 // Exec execute a sql on master DB

@@ -14,12 +14,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func GetByID(ctx context.Context, dst interface{}, table string, id int64) error {
-	if table == "" {
-		table = TableName(dst)
-	}
-
-	if !isFromMaster(ctx) {
+func GetByID(ctx context.Context, dst any, id any, opt *Option) error {
+	table := TableName(dst, opt)
+	if !opt.fromMaster {
 		// Not reading data from the primary database indicates that some delay is tolerable.
 		// Attempt to read from the local cache.
 		if v, ok := cache.Get(table, id); ok {
@@ -34,11 +31,11 @@ func GetByID(ctx context.Context, dst interface{}, table string, id int64) error
 		}
 	}
 
-	b, err := NewSelectBuilderFromStruct(table, dst)
+	b, err := NewSelectBuilderFromStruct(dst, opt)
 	if err != nil {
 		return fmt.Errorf("create select builder error:%w", err)
 	}
-	b = b.Where(WhereFrom(&b.Cond, id, nil)...)
+	b = b.Where(WhereFrom(&b.Cond, id, nil, opt)...)
 
 	var (
 		statement string
@@ -60,39 +57,33 @@ func GetByID(ctx context.Context, dst interface{}, table string, id int64) error
 }
 
 // GetWhere 使用自定义条件跟新数据
-func GetWhere(ctx context.Context, dst interface{}, table string, fields []string, filter KVs) error {
-	if table == "" {
-		table = TableName(dst)
-	}
-	builder, err := NewSelectBuilderFromStruct(table, dst)
+func GetWhere(ctx context.Context, dst any, filter any, opt *Option) error {
+	builder, err := NewSelectBuilderFromStruct(dst, opt)
 	if err != nil {
 		return fmt.Errorf("new select builder error: %w", err)
 	}
-	if len(fields) == 0 {
-		builder = builder.Select(fields...)
+	if len(opt.fields) > 0 {
+		builder = builder.Select(opt.fields...)
 	}
-	builder = builder.Where(WhereFrom(&builder.Cond, filter, nil)...)
+	builder = builder.Where(WhereFrom(&builder.Cond, filter, nil, opt)...)
 	sql, args := Build(ctx, builder)
 	return Get(ctx, dst, sql, args...)
 }
 
 // GetWhere 使用自定义条件跟新数据
-func SelectWhere(ctx context.Context, dst interface{}, table string, fields []string, filter KVs, sort []string, page, pageSize int) error {
-	if table == "" {
-		table = TableName(dst)
-	}
-	builder, err := NewSelectBuilderFromStruct(table, dst)
+func SelectWhere(ctx context.Context, dst any, filter any, opt *Option) error {
+	builder, err := NewSelectBuilderFromStruct(dst, opt)
 	if err != nil {
 		return fmt.Errorf("new select builder error: %w", err)
 	}
-	if len(fields) == 0 {
-		builder = builder.Select(fields...)
+	if len(opt.fields) > 0 {
+		builder = builder.Select(opt.fields...)
 	}
-	builder = builder.Where(WhereFrom(&builder.Cond, filter, nil)...)
+	builder = builder.Where(WhereFrom(&builder.Cond, filter, nil, opt)...)
 
-	if len(sort) > 0 {
+	if len(opt.sorts) > 0 {
 		orderByCols := make([]string, 0, 8)
-		for _, col := range sort {
+		for _, col := range opt.sorts {
 			if col == "" {
 				continue
 			}
@@ -104,22 +95,30 @@ func SelectWhere(ctx context.Context, dst interface{}, table string, fields []st
 		}
 		builder = builder.OrderBy(orderByCols...)
 	}
-	if page > 0 && pageSize > 0 {
-		builder = builder.Limit(pageSize).Offset((page - 1) * pageSize)
+	if opt.page > 0 && opt.pageSize > 0 {
+		builder = builder.Limit(opt.pageSize).Offset((opt.page - 1) * opt.pageSize)
 	}
 
 	sql, args := Build(ctx, builder)
+
+	if opt.fromMaster {
+		ctx = FromMaster(ctx)
+	}
 
 	return Select(ctx, dst, sql, args...)
 }
 
 // Count select the count of rows in table which match the filter condition
-func Count(ctx context.Context, table string, filter any) (int64, error) {
+func Count(ctx context.Context, filter any, opt *Option) (int64, error) {
 	total := sql.NullInt64{}
+	table := TableName(nil, opt)
 	b := sb.NewSelectBuilder().Select("COUNT(1) as total").From(table)
-	b = b.Where(WhereFrom(&b.Cond, filter, nil)...)
+	b = b.Where(WhereFrom(&b.Cond, filter, nil, opt)...)
 
 	sql, args := Build(ctx, b)
+	if opt.fromMaster {
+		ctx = FromMaster(ctx)
+	}
 	err := Get(ctx, &total, sql, args...)
 	if IsNotFound(err) {
 		err = nil
@@ -128,35 +127,43 @@ func Count(ctx context.Context, table string, filter any) (int64, error) {
 }
 
 // Count select the count of rows in table which match the filter condition
-func CountBy(ctx context.Context, table string, filter any, group []string) ([]M, error) {
-	cols := []string{"COUNT(1) as total"}
+func CountBy(ctx context.Context, dst any, filter any, group []string, opt *Option) error {
+	cols := []string{"COUNT(1) as _total"}
 	if len(group) > 0 {
 		cols = append(cols, group...)
 	}
+	table := TableName(nil, opt)
 	b := sb.NewSelectBuilder().Select(cols...).From(table)
-	b = b.Where(WhereFrom(&b.Cond, filter, nil)...)
+	b = b.Where(WhereFrom(&b.Cond, filter, nil, opt)...)
 
 	if len(group) > 0 {
 		b = b.GroupBy(group...)
 	}
 
-	data := []M{}
+	if opt.fromMaster {
+		ctx = FromMaster(ctx)
+	}
+
 	sql, args := Build(ctx, b)
-	err := Select(ctx, &data, sql, args...)
+
+	err := Select(ctx, dst, sql, args...)
 	if IsNotFound(err) {
 		err = nil
 	}
-	return data, err
+	return err
 }
 
 // Distinct fetch distinct values of the column in table
-func Distinct(ctx context.Context, table, column string, filter KVs) ([]any, error) {
+func Distinct(ctx context.Context, column string, filter any, opt *Option) ([]any, error) {
+	table := TableName(nil, opt)
 	builder := sb.NewSelectBuilder().From(table)
 	builder = builder.Select(fmt.Sprintf("DISTINCT(%s) as %s", sb.Escape(column), sb.Escape(column)))
-	conds := WhereFromKVs(&builder.Cond, filter, nil)
+	conds := WhereFrom(&builder.Cond, filter, nil, opt)
 	builder = builder.Where(conds...)
 	sql, args := Build(ctx, builder)
-
+	if opt.fromMaster {
+		ctx = FromMaster(ctx)
+	}
 	data := []any{}
 	if err := Select(ctx, &data, sql, args...); err != nil {
 		return nil, fmt.Errorf("select error: %w", err)
@@ -165,10 +172,14 @@ func Distinct(ctx context.Context, table, column string, filter KVs) ([]any, err
 }
 
 // Exist return true if the at least one row found in table by using where condition
-func Exist(ctx context.Context, table string, filter any) (bool, error) {
+func Exist(ctx context.Context, filter any, opt *Option) (bool, error) {
 	n := sql.NullInt64{}
+	table := TableName(nil, opt)
 	b := sb.NewSelectBuilder().Select("1").From(table).Limit(1)
-	b = b.Where(WhereFrom(&b.Cond, filter, nil)...)
+	b = b.Where(WhereFrom(&b.Cond, filter, nil, opt)...)
+	if opt.fromMaster {
+		ctx = FromMaster(ctx)
+	}
 	statement, args := Build(ctx, b)
 	err := Get(ctx, &n, statement, args...)
 	if err != nil {
@@ -181,25 +192,19 @@ func Exist(ctx context.Context, table string, filter any) (bool, error) {
 }
 
 // NewSelectBuilderFromStruct create select sql builder by data
-func NewSelectBuilderFromStruct(table string, data any) (*sb.SelectBuilder, error) {
-	if table == "" {
-		table = TableName(data)
-	}
+func NewSelectBuilderFromStruct(data any, opt *Option) (*sb.SelectBuilder, error) {
+	table := TableName(data, opt)
 	b := sb.NewSelectBuilder().From(table)
 	if data == nil {
 		b = b.Select("*")
 		return b, nil
 	}
-	t := dereferencedType(reflect.TypeOf(data))
-
-	if t.Kind() == reflect.Slice {
-		t = t.Elem()
-	}
+	t := dereferencedElemType(reflect.TypeOf(data))
 
 	cols := make([]string, 0, t.NumField())
 	for i := 0; i < t.NumField(); i++ {
 		fieldType := t.Field(i)
-		name, after := colNameFromTag(fieldType)
+		name, after := colNameFromTag(fieldType, opt.tagName)
 		if name == "" {
 			continue
 		}

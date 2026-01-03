@@ -15,86 +15,11 @@ type Builder interface {
 
 // Build is same with builder.Build, but it will try to inject namespace(which defined in context) filter into where condition in sql
 func Build(ctx context.Context, b Builder) (string, []any) {
-	switch x := b.(type) {
-	case *sb.UpdateBuilder:
-		appendNamespaceFilter(ctx, &x.Cond)
-	case *sb.SelectBuilder:
-		appendNamespaceFilter(ctx, &x.Cond)
-	case *sb.DeleteBuilder:
-		appendNamespaceFilter(ctx, &x.Cond)
-	}
 	return b.Build()
 }
 
-func appendNamespaceFilter(ctx context.Context, cond *sb.Cond) *sb.Cond {
-	if s := namespaceValueForInject(ctx); s != "" {
-		// append namespace where condition into Cond
-		cond.E(*namespaceColumnName, s)
-	}
-	return cond
-}
-
-func namespaceValueForInject(ctx context.Context) string {
-	if *namespaceColumnName == "" || *namespaceColumnName == "-" {
-		// namespace column disabled
-		return ""
-	}
-	v := ctx.Value(namespaceCtxKey{})
-	if v == nil {
-		// no namespace in context
-		return ""
-	}
-
-	s, ok := v.(string)
-	if !ok {
-		// incorrect namespace value in context, ignore it
-		return ""
-	}
-
-	if s == "" || s == "-" || s == "<nil>" {
-		// empty namespace value in context, ignore it
-		return ""
-	}
-
-	if shouldIgnoreNamespace(ctx) {
-		// user-defined force ignore namespace in context
-		return ""
-	}
-	return s
-}
-
-// WithNamespace add namespace info into context
-func WithNamespace(ctx context.Context, namespace string) context.Context {
-	return context.WithValue(ctx, namespaceCtxKey{}, namespace)
-}
-
-// IgnnoreNamespace force ormx ignore the namespace info in context, so that Build will not inject namespace filter in sql
-func IgnoreNamespace(ctx context.Context) context.Context {
-	return context.WithValue(ctx, ignoreNamespaceCtxKey{}, true)
-}
-
-func shouldIgnoreNamespace(ctx context.Context) bool {
-	v := ctx.Value(ignoreNamespaceCtxKey{})
-	if v == nil {
-		return false
-	}
-	switch x := v.(type) {
-	case bool:
-		return x
-	case string:
-		x = strings.ToLower(x)
-		return x == "1" || x == "true"
-	case int, int64, uint, uint64, float64, float32:
-		return x != 0
-	}
-	return false
-}
-
-type namespaceCtxKey struct{}
-type ignoreNamespaceCtxKey struct{}
-
 // WhereFromStruct generate where exprs from data(type of struct), the returned value can be used by builder.Where method
-func WhereFromStruct(c *sb.Cond, data any, dst []string) []string {
+func WhereFromStruct(c *sb.Cond, data any, dst []string, opt *Option) []string {
 	if data == nil {
 		return []string{}
 	}
@@ -106,10 +31,10 @@ func WhereFromStruct(c *sb.Cond, data any, dst []string) []string {
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
 		fieldType := t.Field(i)
-		if field.IsNil() {
+		if field.IsZero() {
 			continue
 		}
-		name, _ := colNameFromTag(fieldType)
+		name, _ := colNameFromTag(fieldType, opt.tagName)
 		if name == "" {
 			continue
 		}
@@ -148,13 +73,16 @@ func WhereFromID(c *sb.Cond, id int64, dst []string) []string {
 	return dst
 }
 
-func WhereFrom(c *sb.Cond, filter any, dst []string) []string {
+func WhereFrom(c *sb.Cond, filter any, dst []string, opt *Option) []string {
+	if filter == nil {
+		return dst
+	}
 	if kvs, ok := filter.(KVs); ok {
 		return WhereFromKVs(c, kvs, dst)
 	}
 	t := dereferencedType(reflect.TypeOf(filter))
 	if kind := t.Kind(); kind == reflect.Struct {
-		return WhereFromStruct(c, filter, dst)
+		return WhereFromStruct(c, filter, dst, opt)
 	} else if kind == reflect.Slice {
 		dst = append(dst, c.In(*primaryKey, Any2Slice(filter)...))
 	} else {
@@ -171,9 +99,9 @@ func appendWhereExpr(c *sb.Cond, dst []string, column string, value any, op stri
 		} else {
 			dst = append(dst, c.E(column, value))
 		}
-	case "e":
+	case "e", "eq", "equal":
 		dst = append(dst, c.E(column, value))
-	case "ne":
+	case "ne", "neq":
 		dst = append(dst, c.NE(column, value))
 	case "gt":
 		dst = append(dst, c.GreaterThan(column, value))
@@ -185,7 +113,7 @@ func appendWhereExpr(c *sb.Cond, dst []string, column string, value any, op stri
 		dst = append(dst, c.LessEqualThan(column, value))
 	case "in":
 		if values := Any2Slice(value); len(values) > 0 {
-			dst = append(dst, c.In(column, Any2Slice(value)...))
+			dst = append(dst, c.In(column, values...))
 		} else {
 			dst = append(dst, c.IsNull(column))
 		}
@@ -204,48 +132,50 @@ func appendWhereExpr(c *sb.Cond, dst []string, column string, value any, op stri
 //   - type of struct, it will use the struct name, and snake case it
 //   - type of string, return the name.
 //   - type of other, return fmt.Sprintf("%s", d)
-func TableName(d interface{}) string {
+func TableName(d any, opt *Option) string {
+	// table was specified in option
+	if opt != nil && opt.table != "" {
+		return opt.table
+	}
+
+	// d is nil, return empty string
 	if d == nil {
 		return ""
 	}
-S:
-	t, ok := d.(interface {
-		Table() string
-	})
 
-	if ok {
-		return t.Table()
+	t := dereferencedElemType(reflect.TypeOf(d))
+	v := reflect.New(t).Interface()
+
+	// d use Table() method to specify the table name
+	if tabler, ok := v.(interface{ Table() string }); ok {
+		return tabler.Table()
 	}
 
+	// generate table name from structure name of d
 	var (
-		vt   = dereferencedElemType(reflect.TypeOf(d))
 		name string
 	)
 
-	switch vt.Kind() {
-	case reflect.String:
-		return d.(string)
+	switch t.Kind() {
 	case reflect.Struct:
-		structName := vt.Name()
+		structName := t.Name()
 		name = sb.SnakeCaseMapper(structName)
-	case reflect.Slice:
-		d = reflect.New(vt.Elem()).Interface()
-		goto S
 	default:
 		name = fmt.Sprintf("%s", d)
 	}
 
-	if strings.HasPrefix(name, *tableNamePrefix) {
+	// try to prepend the table name prefix specified in option
+	if opt == nil || strings.HasPrefix(name, opt.tablePrefix) {
 		return name
 	}
 
-	return *tableNamePrefix + name
+	return opt.tablePrefix + name
 }
 
 // ColNamesWithTagOpt will column names from structure data, the type of d must be a struct, otherwise will return []string{}.
 //
 // ColNamesWithTagOpt will try to filter the filter the struct field which having <tag> specified in StructField.Tag if <tag> is not empty
-func ColNamesWithTagOpt(d interface{}, tag string) []string {
+func ColNamesWithTagOpt(d interface{}, tag string, opt *Option) []string {
 	vt := reflect.TypeOf(d)
 	if vt.Kind() == reflect.Ptr {
 		vt = vt.Elem()
@@ -253,11 +183,11 @@ func ColNamesWithTagOpt(d interface{}, tag string) []string {
 	if vt.Kind() != reflect.Struct {
 		return []string{}
 	}
-	table := TableName(d)
+	table := TableName(d, opt)
 	var cols []string
 	for i := 0; i < vt.NumField(); i++ {
 		field := vt.Field(i)
-		name, after := colNameFromTag(field)
+		name, after := colNameFromTag(field, opt.tagName)
 		if name == "" {
 			continue
 		}
@@ -273,7 +203,7 @@ func ColNamesWithTagOpt(d interface{}, tag string) []string {
 	return cols
 }
 
-func colNameFromTag(field reflect.StructField) (string, string) {
+func colNameFromTag(field reflect.StructField, tagName string) (string, string) {
 	if !field.IsExported() {
 		return "", ""
 	}
@@ -281,17 +211,11 @@ func colNameFromTag(field reflect.StructField) (string, string) {
 	case reflect.Func, reflect.Chan:
 		return "", ""
 	}
-	name, after, _ := strings.Cut(field.Tag.Get(structTagName), ",")
+	name, after, _ := strings.Cut(field.Tag.Get(tagName), ",")
 	if name == "-" {
 		return "", ""
 	} else if name == "" {
 		return field.Name, after
 	}
 	return name, after
-}
-
-func newCond() *sb.Cond {
-	return &sb.Cond{
-		Args: &sb.Args{},
-	}
 }

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -120,7 +121,8 @@ func IsDuplicate(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "Error 1062: Duplicate")
+	es := err.Error()
+	return strings.Contains(es, "Error 1062") && strings.Contains(es, "Duplicate entry")
 }
 
 // ParseOptionStr will decode key-value data from a string which format like k1:v1,k2:v2,k3:v3.
@@ -162,6 +164,53 @@ func ParseOptionStr(str string) map[string]string {
 	}
 
 	return options
+}
+
+// Float64 将参数 value 转换成 float64 返回
+func Float64(v interface{}) (f float64, err error) {
+	switch val := v.(type) {
+	case float32:
+		f = float64(val)
+	case float64:
+		f = val
+	case int:
+		f = float64(val)
+	case int8:
+		f = float64(val)
+	case int16:
+		f = float64(val)
+	case int32:
+		f = float64(val)
+	case int64:
+		f = float64(val)
+	case uint8:
+		f = float64(val)
+	case uint16:
+		f = float64(val)
+	case uint32:
+		f = float64(val)
+	case uint64:
+		f = float64(val)
+	case time.Duration:
+		f = float64(val)
+	case []byte:
+		s := string(val)
+		f, err = strconv.ParseFloat(s, 64)
+		if err != nil {
+			err = errors.New("unknown value type")
+		}
+	case string:
+		f, err = strconv.ParseFloat(val, 64)
+		if err != nil {
+			err = errors.New("unknown value type")
+		}
+	default:
+		err = errors.New("unknown value type")
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		err = errors.New("unknown value type")
+	}
+	return
 }
 
 var Raw = sb.Raw

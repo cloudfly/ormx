@@ -12,13 +12,13 @@ import (
 )
 
 var (
-	databaseDsn     = flagx.NewString("database.dsn", "", "the dsn address of the master database which ormx connect to write")
-	databaseDsnRead = flagx.NewString("database.dsn.read", "", "the dsn address of the slave database which ormx connect to read")
-	dbDriver        = flagx.NewString("database.driver", "mysql", "the sql driver for executing query")
-	lifetime        = flagx.NewDuration("database.conn.lifetime", "10m", "the maximum amount of seconds a connection may be reused")
-	idletime        = flagx.NewDuration("database.conn.idletime", "1m", "the maximum amount of seconds a connection may be idle")
-	maxOpen         = flagx.NewInt("database.conn.maxopen", 100, "the maximum number of connections to the database server")
-	maxIdle         = flagx.NewInt("database.conn.maxidle", 32, "the maximum number of connections in idle connection poll")
+	databaseDsn     = flagx.NewString("db.dsn", "", "the dsn address of the master database which ormx connect to write")
+	databaseDsnRead = flagx.NewString("db.dsn.read", "", "the dsn address of the slave database which ormx connect to read")
+	dbDriver        = flagx.NewString("db.driver", "mysql", "the sql driver for executing query")
+	lifetime        = flagx.NewDuration("db.conn.lifetime", "10m", "the maximum amount of seconds a connection may be reused")
+	idletime        = flagx.NewDuration("db.conn.idletime", "1m", "the maximum amount of seconds a connection may be idle")
+	maxOpen         = flagx.NewInt("db.conn.maxopen", 100, "the maximum number of connections to the database server")
+	maxIdle         = flagx.NewInt("db.conn.maxidle", 32, "the maximum number of connections in idle connection poll")
 )
 
 var (

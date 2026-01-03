@@ -2,47 +2,47 @@ package ormx
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/cloudfly/flagx"
 	"github.com/cloudfly/ormx/cache"
+	"github.com/jmoiron/sqlx"
 )
 
 var (
-	tableNamePrefix     = flagx.NewString("database.table.prefix", "", "the table name's common prefix")
-	structTagName       = "db"
-	namespaceColumnName = flagx.NewString("database.table.namespace.column", "namespace", "the column name used to represent row's namespace")
-	primaryKey          = flagx.NewString("database.table.primarykey", "id", "the primary id column name")
+	tableNamePrefix = flagx.NewString("db.table.prefix", "", "the table name's common prefix")
+	primaryKey      = flagx.NewString("db.table.primarykey", "id", "the primary id column name")
+
+	gopt *Option = &Option{}
 )
 
 // Init the ormx, setting the sqlx.DB getter and common table name prefix
-func Init(ctx context.Context, provider DBProvider) error {
+func Init(ctx context.Context, opt *Option) error {
 	if err := Connect(ctx); err != nil {
-		return err
+		return fmt.Errorf("connect db error: %w", err)
 	}
-	if provider != nil {
-		p = provider
+	if opt == nil {
+		opt = &Option{}
 	}
+	newOpt := opt.Copy()
+	if newOpt.tagName == "" {
+		newOpt.tagName = "db"
+	}
+	if newOpt.tablePrefix == "" {
+		newOpt.tablePrefix = *tableNamePrefix
+	}
+	if newOpt.primaryKey == "" {
+		newOpt.primaryKey = *primaryKey
+	}
+	gopt = newOpt
+
 	return cache.Init()
 }
 
-// SetStructTagName set the tag name in Go Struct Tag, in which specify the ormx options, default is 'db'
-func SetStructTagName(name string) {
-	structTagName = name
-}
-
-// SetPrimaryKey set the primary column name, default is 'id'
-func SetPrimaryKey(name string) {
-	if name != "" {
-		*primaryKey = name
-	}
-}
-
-// SetNamespaceColumnName set the common namespace colunm name, default is 'namespace';
-//
-// ormx will auto inject namespace where condition into sql.// Set to empty string disable this feature
-func SetNamespaceColumnName(name string) {
-	*namespaceColumnName = name
+// SetGlobalOption set option for all the sql execution
+func SetGlobalOption(opt *Option) {
+	gopt = opt.Copy()
 }
 
 type masterCtxKey struct{}
@@ -69,4 +69,124 @@ func convertValueByDBType(v any, tag string) any {
 		}
 	}
 	return v
+}
+
+// Option for select or insert data
+type Option struct {
+	table               string
+	tablePrefix         string
+	namespace           string
+	ignoreNamespace     bool
+	fields              []string
+	sorts               []string
+	page                int
+	pageSize            int
+	primaryKey          string
+	tagName             string
+	namespaceColumnName string
+	fromMaster          bool
+	tx                  *sqlx.Tx
+	txLevel             sql.IsolationLevel
+}
+
+type optionCtxKey struct{}
+
+// NewOptionCtx return a new option for execute sql
+func NewOption() *Option {
+	return gopt.Copy()
+}
+
+// CtxOption try to get option from context, if not found, return NewOption()
+func CtxOption(ctx context.Context) *Option {
+	v := ctx.Value(optionCtxKey{})
+	if v != nil {
+		return v.(*Option)
+	}
+	return gopt.Copy()
+}
+
+func (opt *Option) Copy() *Option {
+	if opt == nil {
+		return nil
+	}
+	newOpt := *opt
+	newOpt.fields = append([]string{}, opt.fields...)
+	newOpt.sorts = append([]string{}, opt.sorts...)
+
+	return &newOpt
+}
+
+func (opt *Option) Table(value any) *Option {
+	switch data := value.(type) {
+	case string:
+		opt.table = data
+	case interface{ Table() string }:
+		opt.table = data.Table()
+	}
+	return opt
+}
+
+func (opt *Option) Namespace(value string) *Option {
+	opt.namespace = value
+	return opt
+}
+
+func (opt *Option) IgnoreNamespace() *Option {
+	opt.ignoreNamespace = true
+	return opt
+}
+
+func (opt *Option) Fields(value ...string) *Option {
+	opt.fields = value
+	return opt
+}
+
+func (opt *Option) Sorts(value ...string) *Option {
+	opt.sorts = value
+	return opt
+}
+
+func (opt *Option) Page(page, pageSize int) *Option {
+	opt.page, opt.pageSize = page, pageSize
+	return opt
+}
+
+func (opt *Option) PrimaryKey(value string) *Option {
+	opt.primaryKey = value
+	return opt
+}
+
+func (opt *Option) TagName(value string) *Option {
+	opt.tagName = value
+	return opt
+}
+
+func (opt *Option) NamespaceColumnName(value string) *Option {
+	opt.namespaceColumnName = value
+	return opt
+}
+
+func (opt *Option) TablePrefix(value string) *Option {
+	opt.tablePrefix = value
+	return opt
+}
+
+func (opt *Option) Tx(tx *sqlx.Tx) *Option {
+	opt.tx = tx
+	return opt
+}
+
+func (opt *Option) Isolation(level sql.IsolationLevel) *Option {
+	opt.txLevel = level
+	return opt
+}
+
+func (opt *Option) FromMaster() *Option {
+	opt.fromMaster = true
+	return opt
+}
+
+// With put the Option into context by Context.WithValue
+func (opt *Option) With(ctx context.Context) context.Context {
+	return context.WithValue(ctx, optionCtxKey{}, opt)
 }
