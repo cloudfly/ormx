@@ -46,7 +46,7 @@ func Connect(ctx context.Context) error {
 	db.SetMaxIdleConns(*maxIdle)
 	db.SetMaxOpenConns(*maxOpen)
 
-	if *databaseDsnRead == "" {
+	if *databaseDsnRead != "" {
 		zerolog.Ctx(ctx).Info().Str("dsn", *databaseDsnRead).Msg("Connecting to slave database server")
 		rdb, err = sqlx.ConnectContext(ctx, *dbDriver, *databaseDsnRead)
 		if err != nil {
