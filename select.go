@@ -43,7 +43,12 @@ func GetByID(ctx context.Context, dst any, id any, opt *Option) error {
 	)
 	statement, args = Build(ctx, b)
 
-	if err := Get(ctx, dst, statement, args...); err != nil {
+	if opt.tx != nil {
+		err = GetTx(ctx, opt.tx, dst, statement, args...)
+	} else {
+		err = Get(ctx, dst, statement, args...)
+	}
+	if err != nil {
 		return err
 	}
 	content, err := json.Marshal(dst)
@@ -67,7 +72,12 @@ func GetWhere(ctx context.Context, dst any, filter any, opt *Option) error {
 	}
 	builder = builder.Where(WhereFrom(&builder.Cond, filter, nil, opt)...)
 	sql, args := Build(ctx, builder)
-	return Get(ctx, dst, sql, args...)
+	if opt.tx != nil {
+		err = GetTx(ctx, opt.tx, dst, sql, args...)
+	} else {
+		err = Get(ctx, dst, sql, args...)
+	}
+	return err
 }
 
 // GetWhere 使用自定义条件跟新数据
@@ -104,8 +114,12 @@ func SelectWhere(ctx context.Context, dst any, filter any, opt *Option) error {
 	if opt.fromMaster {
 		ctx = FromMaster(ctx)
 	}
-
-	return Select(ctx, dst, sql, args...)
+	if opt.tx != nil {
+		err = SelectTx(ctx, opt.tx, dst, sql, args...)
+	} else {
+		err = Select(ctx, dst, sql, args...)
+	}
+	return err
 }
 
 // Count select the count of rows in table which match the filter condition
@@ -119,7 +133,12 @@ func Count(ctx context.Context, filter any, opt *Option) (int64, error) {
 	if opt.fromMaster {
 		ctx = FromMaster(ctx)
 	}
-	err := Get(ctx, &total, sql, args...)
+	var err error
+	if opt.tx != nil {
+		err = GetTx(ctx, opt.tx, &total, sql, args...)
+	} else {
+		err = Get(ctx, &total, sql, args...)
+	}
 	if IsNotFound(err) {
 		err = nil
 	}
@@ -146,7 +165,12 @@ func CountBy(ctx context.Context, dst any, filter any, group []string, opt *Opti
 
 	sql, args := Build(ctx, b)
 
-	err := Select(ctx, dst, sql, args...)
+	var err error
+	if opt.tx != nil {
+		err = SelectTx(ctx, opt.tx, dst, sql, args...)
+	} else {
+		err = Select(ctx, dst, sql, args...)
+	}
 	if IsNotFound(err) {
 		err = nil
 	}
@@ -164,8 +188,18 @@ func Distinct(ctx context.Context, column string, filter any, opt *Option) ([]an
 	if opt.fromMaster {
 		ctx = FromMaster(ctx)
 	}
-	data := []any{}
-	if err := Select(ctx, &data, sql, args...); err != nil {
+
+	var (
+		data = []any{}
+		err  error
+	)
+
+	if opt.tx != nil {
+		err = SelectTx(ctx, opt.tx, &data, sql, args...)
+	} else {
+		err = Select(ctx, &data, sql, args...)
+	}
+	if err != nil {
 		return nil, fmt.Errorf("select error: %w", err)
 	}
 	return data, nil
@@ -181,7 +215,13 @@ func Exist(ctx context.Context, filter any, opt *Option) (bool, error) {
 		ctx = FromMaster(ctx)
 	}
 	statement, args := Build(ctx, b)
-	err := Get(ctx, &n, statement, args...)
+
+	var err error
+	if opt.tx != nil {
+		err = GetTx(ctx, opt.tx, &n, statement, args...)
+	} else {
+		err = Get(ctx, &n, statement, args...)
+	}
 	if err != nil {
 		if IsNotFound(err) {
 			return false, nil
