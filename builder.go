@@ -34,7 +34,7 @@ func WhereFromStruct(c *sb.Cond, data any, dst []string, opt *Option) []string {
 		if field.IsZero() {
 			continue
 		}
-		name, _ := colNameFromTag(fieldType, opt.tagName)
+		name, _ := colNameFromTag(fieldType, opt.tagName, data)
 		if name == "" {
 			continue
 		}
@@ -187,7 +187,7 @@ func ColNamesWithTagOpt(d interface{}, tag string, opt *Option) []string {
 	var cols []string
 	for i := 0; i < vt.NumField(); i++ {
 		field := vt.Field(i)
-		name, after := colNameFromTag(field, opt.tagName)
+		name, after := colNameFromTag(field, opt.tagName, d)
 		if name == "" {
 			continue
 		}
@@ -203,7 +203,7 @@ func ColNamesWithTagOpt(d interface{}, tag string, opt *Option) []string {
 	return cols
 }
 
-func colNameFromTag(field reflect.StructField, tagName string) (string, string) {
+func colNameFromTag(field reflect.StructField, tagName string, fo ...any) (string, string) {
 	if !field.IsExported() {
 		return "", ""
 	}
@@ -211,11 +211,28 @@ func colNameFromTag(field reflect.StructField, tagName string) (string, string) 
 	case reflect.Func, reflect.Chan:
 		return "", ""
 	}
-	name, after, _ := strings.Cut(field.Tag.Get(tagName), ",")
-	if name == "-" {
+	tagStr := ""
+	if len(fo) > 0 {
+		if o, ok := fo[0].(FieldOptioner); ok {
+			tagStr = o.OrmxFieldOption(field.Name)
+		}
+	} else if tagName != "" {
+		tagStr = field.Tag.Get(tagName)
+	}
+
+	name, after, _ := strings.Cut(tagStr, ",")
+
+	switch name {
+	case "-":
 		return "", ""
-	} else if name == "" {
+	case "":
 		return field.Name, after
 	}
+
 	return name, after
+}
+
+type FieldOptioner interface {
+	// return the field's option by field name for structure
+	OrmxFieldOption(string) string
 }

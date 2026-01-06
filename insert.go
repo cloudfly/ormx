@@ -144,7 +144,7 @@ func NewInsertBuilderFromStruct(ctx context.Context, data []any, opt *Option) (*
 	)
 	for i := 0; i < t.NumField(); i++ {
 		fieldType := t.Field(i)
-		name, after := colNameFromTag(fieldType, opt.tagName)
+		name, after := colNameFromTag(fieldType, opt.tagName, data[0])
 		if name == "" {
 			continue
 		}

@@ -70,7 +70,7 @@ func NewUpdateBuilderFromStruct(data any, opt *Option) (*sb.UpdateBuilder, bool)
 			continue
 		}
 
-		name, after := colNameFromTag(fieldType, opt.tagName)
+		name, after := colNameFromTag(fieldType, opt.tagName, data)
 		if name == "" {
 			continue
 		}

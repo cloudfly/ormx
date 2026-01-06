@@ -244,7 +244,7 @@ func NewSelectBuilderFromStruct(data any, opt *Option) (*sb.SelectBuilder, error
 	cols := make([]string, 0, t.NumField())
 	for i := 0; i < t.NumField(); i++ {
 		fieldType := t.Field(i)
-		name, after := colNameFromTag(fieldType, opt.tagName)
+		name, after := colNameFromTag(fieldType, opt.tagName, data)
 		if name == "" {
 			continue
 		}
